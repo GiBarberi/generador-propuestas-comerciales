@@ -1,1 +1,1 @@
-Carpeta para archivos relacionados con Notion.
+En esta carpeta se encuentra comprimido el trabajo que se realizo en notion. 
