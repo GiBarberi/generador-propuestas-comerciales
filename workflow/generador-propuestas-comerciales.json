@@ -1,0 +1,497 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "authentication": "oAuth2",
+        "databaseId": {
+          "__rl": true,
+          "value": "3a18fc40-f78d-80a0-8dcd-e9798c6ad97c",
+          "mode": "list",
+          "cachedResultName": "Propuestas Comerciales - DB",
+          "cachedResultUrl": "https://app.notion.com/p/3a18fc40f78d80a08dcde9798c6ad97c"
+        }
+      },
+      "type": "n8n-nodes-base.notionTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2609d485-2a06-438f-81c1-db0211539089",
+      "name": "Notion Trigger",
+      "credentials": {
+        "notionOAuth2Api": {
+          "id": "5uh7mxDjCxl6etFw",
+          "name": "Notion account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-5",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-5"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "Eres un consultor comercial senior con mas de 15 anos de experiencia diseñando propuestas comerciales ganadoras para empresas de diversos sectores. Tu objetivo es analizar el brief de un cliente y generar una propuesta comercial profesional, personalizada y persuasiva.\n\nDatos del cliente:\n- Nombre del cliente: {{ $json[\"Nombre Cliente\"] }}\n- Industria: {{ $json[\"Industria\"] }}\n- Objetivo del proyecto: {{ $json[\"Objetivo\"] }}\n- Presupuesto disponible: {{ $json[\"Presupuesto\"] }} USD\n\nInstrucciones:\n1. Piensa paso a paso antes de responder: primero analiza el sector e identifica los principales desafios que enfrenta una empresa de esa industria con ese objetivo. Luego define una solucion adecuada al presupuesto disponible. Finalmente redacta la propuesta.\n2. La propuesta debe incluir: un resumen ejecutivo, la solucion propuesta, y los beneficios esperados. Maximo 200 palabras.\n3. Estima un precio final (puede diferir ligeramente del presupuesto declarado si se justifica).\n4. Estima una duracion realista del proyecto en semanas o meses.\n5. Indica tu nivel de confianza (Alto, Medio o Bajo) sobre la viabilidad de esta propuesta segun la informacion disponible.\n\nFormato de salida (responde UNICAMENTE con este JSON, sin texto adicional, sin markdown):\n{\n  \"propuesta\": \"...\",\n  \"precio_estimado\": 0,\n  \"duracion_estimada\": \"...\",\n  \"nivel_confianza\": \"Alto|Medio|Bajo\"\n}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "5e04da51-45b6-43a2-b530-3fc55ae7877f",
+      "name": "Message a model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "sn92CbKVzCcn82RW",
+          "name": "Anthropic account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n    let rawText = '';\n    if (item.json.content && Array.isArray(item.json.content) && item.json.content[0] && item.json.content[0].text) {\n          rawText = item.json.content[0].text;\n    } else if (item.json.text) {\n          rawText = item.json.text;\n    }\n    rawText = (rawText || '').trim();\n\n    let parsed;\n    try {\n          parsed = JSON.parse(rawText);\n    } catch (e1) {\n      try {\n              const start = rawText.indexOf('{');\n              const end = rawText.lastIndexOf('}');\n              const jsonSlice = rawText.substring(start, end + 1);\n              parsed = JSON.parse(jsonSlice);\n      } catch (e2) {\n        parsed = {\n                  propuesta: 'ERROR: no se pudo parsear la respuesta de la IA. Revisar manualmente.',\n                  precio_estimado: 0,\n                  duracion_estimada: 'N/A',\n                  nivel_confianza: 'Bajo'\n        };\n      }\n    }\n\n    results.push({\n          json: {\n                  pageId: $('Notion Trigger').item.json.id,\n                  propuesta: parsed.propuesta || '',\n                  precio_estimado: Number(parsed.precio_estimado) || 0,\n                  duracion_estimada: parsed.duracion_estimada || '',\n                  nivel_confianza: parsed.nivel_confianza || 'Bajo'\n          }\n    });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        -16
+      ],
+      "id": "ea07d039-6245-4617-aea6-692f7fb15efc",
+      "name": "Parsear Respuesta IA",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Notion Trigger').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "=Propuesta IA|rich_text",
+              "textContent": "{{ $json.propuesta }}"
+            },
+            {
+              "key": "=Precio Estimado|number",
+              "numberValue": "={{ $json.precio_estimado }}"
+            },
+            {
+              "key": "=Duracion Estimada|rich_text",
+              "textContent": "{{ $json.duracion_estimada }}"
+            },
+            {
+              "key": "=Nivel de Confianza|select",
+              "selectValue": "={{ $json.nivel_confianza }}"
+            },
+            {
+              "key": "=Estado|select",
+              "selectValue": "=En Revision"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        864,
+        -32
+      ],
+      "id": "89aa93f9-293c-4986-bc9f-d78c32e4bd48",
+      "name": "Actualizar Propuesta en Notion",
+      "credentials": {
+        "notionOAuth2Api": {
+          "id": "5uh7mxDjCxl6etFw",
+          "name": "Notion account 7"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{  $('Notion Trigger').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "=Estado|select",
+              "selectValue": "Error"
+            },
+            {
+              "key": "=Log de Error|rich_text",
+              "textContent": "={{  $json.error?.message || 'Error desconocido en Message a model' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        608,
+        224
+      ],
+      "id": "ba4e00cc-71cc-4786-9f55-ad9cfb0fa523",
+      "name": "Registrar Error en Notion",
+      "credentials": {
+        "notionOAuth2Api": {
+          "id": "5uh7mxDjCxl6etFw",
+          "name": "Notion account 7"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "authentication": "oAuth2",
+        "event": "pagedUpdatedInDatabase",
+        "databaseId": {
+          "__rl": true,
+          "value": "3a18fc40-f78d-80a0-8dcd-e9798c6ad97c",
+          "mode": "list",
+          "cachedResultName": "Propuestas Comerciales - DB",
+          "cachedResultUrl": "https://app.notion.com/p/3a18fc40f78d80a08dcde9798c6ad97c"
+        }
+      },
+      "type": "n8n-nodes-base.notionTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "id": "f33cb454-835c-4567-9ec3-a95770aa39eb",
+      "name": "Trigger: Pagina Actualizada (HITL)",
+      "credentials": {
+        "notionOAuth2Api": {
+          "id": "5uh7mxDjCxl6etFw",
+          "name": "Notion account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c12f4011-0c4c-45e7-a686-edb01f7ae9cd",
+              "leftValue": "={{ $json.Aprobado}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "edb271d6-cd83-4dce-bba5-517b49948149",
+              "leftValue": "={{  $json.Estado }}",
+              "rightValue": "En Revision",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        352,
+        400
+      ],
+      "id": "9414531e-c63e-4a12-94c8-eb45eb410104",
+      "name": "Verificar Aprobacion Humana"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{  $json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "=Estado|select",
+              "selectValue": "=Aprobado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        384
+      ],
+      "id": "5cffa76e-7ea1-4b50-a27f-a5bd724ebcb5",
+      "name": "Marcar Propuesta como Aprobada",
+      "credentials": {
+        "notionOAuth2Api": {
+          "id": "5uh7mxDjCxl6etFw",
+          "name": "Notion account 7"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "{{ $('Trigger: Pagina Actualizada (HITL)').item.json['Email Cliente'] }}",
+        "subject": "Propuesta Comercial - {{ $('Trigger: Pagina Actualizada (HITL)').item.json['Nombre Cliente'] }}",
+        "message": "{{ $('Trigger: Pagina Actualizada (HITL)').item.json['Propuesta IA'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        368
+      ],
+      "id": "4211912b-11d3-4f2c-acef-d56f20fd4fb1",
+      "name": "Enviar Propuesta por Gmail",
+      "webhookId": "e8c5d896-02b0-4839-939e-f122a768d785",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "zX3aLD3wYNPjwEfX",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Trigger: Pagina Actualizada (HITL)').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Estado|select",
+              "selectValue": "Enviado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        304
+      ],
+      "id": "5b3e18ed-aea2-4e6f-b72a-57e6fd5253b8",
+      "name": "Marcar Propuesta como Enviada",
+      "credentials": {
+        "notionOAuth2Api": {
+          "id": "5uh7mxDjCxl6etFw",
+          "name": "Notion account 7"
+        }
+      },
+      "onError": "continueErrorOutput"
+    }
+  ],
+  "connections": {
+    "Notion Trigger": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parsear Respuesta IA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar Error en Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Respuesta IA": {
+      "main": [
+        [
+          {
+            "node": "Actualizar Propuesta en Notion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar Error en Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar Propuesta en Notion": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Registrar Error en Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger: Pagina Actualizada (HITL)": {
+      "main": [
+        [
+          {
+            "node": "Verificar Aprobacion Humana",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Aprobacion Humana": {
+      "main": [
+        [
+          {
+            "node": "Marcar Propuesta como Aprobada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar Propuesta como Aprobada": {
+      "main": [
+        [
+          {
+            "node": "Enviar Propuesta por Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Propuesta por Gmail": {
+      "main": [
+        [
+          {
+            "node": "Marcar Propuesta como Enviada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar Error en Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar Propuesta como Enviada": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Registrar Error en Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Notion Trigger": [
+      {
+        "id": "3a18fc40-f78d-800f-86a8-fdd3ef541818",
+        "Objetivo": "Generar una propuesta de sistema de gestion de citas medicas online",
+        "Industria": "Salud",
+        "Propuesta IA": "",
+        "Log de Error": "",
+        "Precio Estimado": null,
+        "Presupuesto": 15000,
+        "Email Cliente": "contacto@saludintegral-demo.com",
+        "Nivel de Confianza": null,
+        "Duracion Estimada": "",
+        "Estado": "Nuevo",
+        "Aprobado": false,
+        "Nombre Cliente": "Salud Integral SAS"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "81806d4b5c87a16bcfd7d58418fed937df99dae78cd070b8d707d8464a4c3d8d"
+  }
+}
